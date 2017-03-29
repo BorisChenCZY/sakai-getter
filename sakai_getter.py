@@ -8,6 +8,8 @@ import time
 import getpass
 import os
 import re
+import sys
+import platform
 from lxml.html.soupparser import unescape
 from bs4 import BeautifulSoup
 
@@ -19,6 +21,7 @@ class Site(object):
         self.url = url + '/'
         self.session = session
         self.db = self.get_db(url)
+        
 
     def get_db(self, url):
         pattern = re.compile('/site/(.*?)$')
@@ -36,11 +39,12 @@ class Sakai(object):
     information such as course slices or assignments from this modual
     """
 
-    def __init__(self, username, password):
+    def __init__(self, username, password, path):
         """
         to init Sakai, username and password is in need
         """
         super(Sakai, self).__init__()
+        self.path = path
         self.headers = {
             "User-Agent": 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_3)' +
                           ' AppleWebKit/537.36 (KHTML, like Gecko) Chrome/' +
@@ -58,7 +62,7 @@ class Sakai(object):
         # 第一次访问，用来获取lt和execution属性（每次登陆sakai都会变化，是一个防止爬虫的设置）
         r = self.s.get(self.url, headers = self.headers)
         content = r.content.decode('utf-8')
-        print(r.headers)
+        # print(r.headers)
         # 得到lt和excution属性
         self.data['execution'] = self._get_execution(content)
         self.data['lt'] = self._get_lt(content)
@@ -116,16 +120,17 @@ class Sakai(object):
             self.topped_sites[name] = site
             self.sites[name] = site
         others = soup.find(id='otherSitesCategorWrap')
-        for item in others:
-            if item.name == 'h4':
-                session = item.get_text()
-            if item.name == 'ul':
-                for li in item.find_all('li'):
-                    name = li.find('span').get_text()
-                    url = li.find('a').get('href')
-                    site = Site(name, url, session)
-                    self.other_sites[name] = site
-                    self.sites[name] = site
+        if others:
+            for item in others:
+                if item.name == 'h4':
+                    session = item.get_text()
+                if item.name == 'ul':
+                    for li in item.find_all('li'):
+                        name = li.find('span').get_text()
+                        url = li.find('a').get('href')
+                        site = Site(name, url, session)
+                        self.other_sites[name] = site
+                        self.sites[name] = site
         return list(self.sites.keys())
 
     def _get_tree(self, url):
@@ -138,10 +143,10 @@ class Sakai(object):
         files = {}
         if html_folders:
             for item in html_folders:
-                folders[item.get_text()] = self._get_tree(base_url + item.a.get('href'))
+                folders[item.get_text().strip()] = self._get_tree(base_url + item.a.get('href'))
 
         for item in html_files:
-            name = item.get_text()
+            name = item.get_text().strip()
             url = base_url + item.a.get('href')
             files[name] = url
         return [folders, files]
@@ -157,6 +162,7 @@ class Sakai(object):
 
     def _download(self, tree, cur_dir):
         global time__
+        cur_dir = os.path.expanduser(cur_dir)
         if not os.path.isdir(cur_dir):
             os.mkdir(cur_dir)
         files = tree[1]
@@ -168,12 +174,13 @@ class Sakai(object):
             time__ += 1
             url = files[file]
             try:
-                r = self.s.get(url, stream=True, timeout = 10)
+                r = self.s.get(url, stream=True, timeout = 2)
                 chunk_size = 1000
                 timer = 0
                 length = int(r.headers['Content-Length'])
                 print('downloading {}'.format(file))
-                dir = cur_dir + '/' + file
+                dir = cur_dir + '/' + file.strip().replace(':', '_')
+                sys.path.append(dir)
                 with open(dir, 'wb') as f:
                     for chunk in r.iter_content(chunk_size):
                         timer += chunk_size
@@ -182,7 +189,7 @@ class Sakai(object):
                         f.write(chunk)
                 time.sleep(0.01)
             except requests.exceptions.ReadTimeout:
-                print('read time out trying to redownload')
+                print('read time out, trying to redownload')
                 self._download_error(r.url, dir)
             except requests.exceptions.ConnectionError:
                 print('ConnectionError, trying to redownload')
@@ -202,12 +209,20 @@ class Sakai(object):
                     percent = round(timer/length, 2) * 100
                     print('{:4f}'.format((percent)), end =  ' \r ')
                     f.write(chunk)
+            print('successfully redownload')
         except requests.exceptions.ReadTimeout:
-                print('read time out')
+            if platform.system() == 'Windows':
+                windows_command_line.printRed('You may need to download this file yourself, sorry\n')
+                windows_command_line.printRed(r.url + '\n')
+            else:
+                print('You may need to download this file yourself, sorry')
                 print(r.url)
         except requests.exceptions.ConnectionError:
-                print('ConnectionError')
-                print(r.url)
+                if platform.system() == 'Windows':
+                    windows_command_line.printRed('You may need to download this file yourself, sorry\n')
+                else:
+                    print('You may need to download this file yourself, sorry')
+                    print(r.url)
 
     def get_tree(self, site):
         site = self.sites[site]
@@ -228,7 +243,7 @@ class Sakai(object):
             else:
                 print('please enter y or n')
 
-        self._download(tree, './{}'.format(site.name))
+        self._download(tree, self.path + '/' + site.name)
 
         # for name in sorted(files.keys()):
         #     url = files[name]
@@ -249,15 +264,29 @@ class Sakai(object):
 
 
 if __name__ == '__main__':
-    print('\033[0;33;38mWelcome to use sakai getter. This application is developed by Boris, hope you will enjoy it.')
-    print('If you have any problem when using it, please email me by 11510237@mail.sustc.edu.cn')
-    print('\033[0m')
+    if 'Windows' in platform.system():
+        formula = '^(.*?)\\.*?.exe'
+        pattern = re.compile(formula)
+        path = re.findall(pattern, sys.argv[0])[0]
+        import windows_command_line
+        windows_command_line.printPink('Welcome to use sakai getter. This application is developed by Boris, hope you will enjoy it.\n')
+        windows_command_line.printPink('If you have any problem when using it, please email me by 11510237@mail.sustc.edu.cn, thank you very much\n')
+    else:
+        import Cocoa
+        print('\033[0;33;38mWelcome to use sakai getter. This application is developed by Boris, hope you will enjoy it.')
+        print('If you have any problem when using it, please email me by 11510237@mail.sustc.edu.cn, thank you very much')
+        print('\033[0m')
+        path = Cocoa.NSBundle.mainBundle().bundlePath()
+        if 'Python.app' in path:
+            path = os.getcwd()
+        sys.path.append(path)
+        # formula = 'Users/Boris'
+        # pattern = re.compile(formula)
+        # path = (re.sub(pattern, '~', path))
     while True:
         username = input('Please enter your username:')
         password = getpass.getpass('please enter you password:')
-        # username = 11510238
-        # password = 290612
-        sakai = Sakai(username, password)
+        sakai = Sakai(username, password, path)
         if sakai.login():
             print('successfully logged in')
             break
@@ -276,3 +305,4 @@ if __name__ == '__main__':
     print('you have choosed {}'.format(site))
     time__ = 0
     sakai.get_tree(site)
+    input('Thank you for using\nenter any key to exit')
