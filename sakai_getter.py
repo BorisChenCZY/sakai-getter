@@ -265,7 +265,7 @@ class Sakai(object):
 
 if __name__ == '__main__':
     if 'Windows' in platform.system():
-        formula = '^(.*?)\\.*?.exe'
+        formula = '(.*)\\\\.*?.exe'
         pattern = re.compile(formula)
         path = re.findall(pattern, sys.argv[0])[0]
         import windows_command_line
