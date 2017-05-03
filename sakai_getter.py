@@ -13,6 +13,7 @@ import platform
 from lxml.html.soupparser import unescape
 from bs4 import BeautifulSoup
 
+time__ = 0
 
 class Site(object):
 
@@ -181,12 +182,16 @@ class Sakai(object):
                 print('downloading {}'.format(file))
                 dir = cur_dir + '/' + file.strip().replace(':', '_')
                 sys.path.append(dir)
+                if os.path.isfile(dir):
+                    print('  file already exist, skipped')
+                    continue
                 with open(dir, 'wb') as f:
                     for chunk in r.iter_content(chunk_size):
                         timer += chunk_size
                         percent = round(timer/length, 4) * 100
-                        print('{:4f}'.format((percent)), end =  ' \r ')
+                        print('\r {:4f}'.format((percent)), end = '')
                         f.write(chunk)
+                print('\r  finished    ')
                 time.sleep(0.01)
             except requests.exceptions.ReadTimeout:
                 print('read time out, trying to redownload')
@@ -194,6 +199,8 @@ class Sakai(object):
             except requests.exceptions.ConnectionError:
                 print('ConnectionError, trying to redownload')
                 self._download_error(r.url, dir)
+            except UnboundLocalError:
+                print('Unkonwn error')
 
     def _download_error(self, url, dir):
 
@@ -207,7 +214,7 @@ class Sakai(object):
                 for chunk in r.iter_content(chunk_size):
                     timer += chunk_size
                     percent = round(timer/length, 2) * 100
-                    print('{:4f}'.format((percent)), end =  ' \r ')
+                    print('\r {:4f}'.format((percent)), end = '')
                     f.write(chunk)
             print('successfully redownload')
         except requests.exceptions.ReadTimeout:
@@ -224,7 +231,7 @@ class Sakai(object):
                     print('You may need to download this file yourself, sorry')
                     print(r.url)
 
-    def get_tree(self, site):
+    def get_tree(self, site, ensure = True):
         site = self.sites[site]
         base_url = 'http://sakai.sustc.edu.cn/access/content/group/' + site.db + "/"
         tree = self._get_tree(base_url)
@@ -233,7 +240,7 @@ class Sakai(object):
         print('this is the current files in the root: ')
         self._print_tree(tree, site.name)
         #check whether to download
-        while True:
+        while ensure:
             a = input('are you going to download them?[y/n]')
             # a = 'y'
             if a == 'y' or a == 'Y':
@@ -284,8 +291,8 @@ if __name__ == '__main__':
         # pattern = re.compile(formula)
         # path = (re.sub(pattern, '~', path))
     while True:
-        username = input('Please enter your username:')
-        password = getpass.getpass('please enter you password:')
+        username = 11510237  # input('Please enter your username:')
+        password = 310034  # getpass.getpass('please enter you password:')
         sakai = Sakai(username, password, path)
         if sakai.login():
             print('successfully logged in')
@@ -298,11 +305,17 @@ if __name__ == '__main__':
     print("You've registered these sites:")
     for i in range(1, len(sites) + 1):
         print(i, sites[i - 1])
-    num = int(input('enter the number of the site that you want to download:'))
-    num -= 1
-    # num = 
-    site = sites[num]
-    print('you have choosed {}'.format(site))
-    time__ = 0
+    num = (input('enter the number of the site that you want to download:')).split()
+    if len(num) == 1:
+        num = num[0] - 1
+        site = sites[num]
+        print('you have choosed {}'.format(site))
+        sakai.get_tree(site)
+    else:
+        for num_ in map(lambda x: int(x) - 1, num):
+            site = sites[num_]
+            print('you have choosed {}'.format(site))
+            sakai.get_tree(site, False)
+    
     sakai.get_tree(site)
     input('Thank you for using\nenter any key to exit')
