@@ -1,3 +1,4 @@
+__author__ = 'Boris'
 # encode = utf-8
 # this code is written and designed by Boris, 2017.3.28.
 # without permission, this code cannot be modified or copied
