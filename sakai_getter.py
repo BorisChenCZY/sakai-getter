@@ -62,6 +62,7 @@ class Sakai(object):
         self.s = requests.session()
         # 第一次访问，用来获取lt和execution属性（每次登陆sakai都会变化，是一个防止爬虫的设置）
         r = self.s.get(self.url, headers = self.headers)
+
         content = r.content.decode('utf-8')
         # print(r.headers)
         # 得到lt和excution属性
@@ -178,7 +179,10 @@ class Sakai(object):
                 r = self.s.get(url, stream=True, timeout = 2)
                 chunk_size = 1000
                 timer = 0
-                length = int(r.headers['Content-Length'])
+                if 'Content-Length' in r.headers.keys():
+                    length = int(r.headers['Content-Length'])
+                else:
+                    length = 1
                 print('downloading {}'.format(file))
                 dir = cur_dir + '/' + file.strip().replace(':', '_')
                 sys.path.append(dir)
@@ -305,17 +309,12 @@ if __name__ == '__main__':
     print("You've registered these sites:")
     for i in range(1, len(sites) + 1):
         print(i, sites[i - 1])
-    num = (input('enter the number of the site that you want to download:')).split()
-    if len(num) == 1:
-        num = num[0] - 1
-        site = sites[num]
+    num = (input('enter the number of the site that you want to download:')).strip().split()
+
+    for num_ in map(lambda x: int(x) - 1, num):
+        site = sites[num_]
         print('you have choosed {}'.format(site))
-        sakai.get_tree(site)
-    else:
-        for num_ in map(lambda x: int(x) - 1, num):
-            site = sites[num_]
-            print('you have choosed {}'.format(site))
-            sakai.get_tree(site, False)
+        sakai.get_tree(site, False)
     
     sakai.get_tree(site)
     input('Thank you for using\nenter any key to exit')
